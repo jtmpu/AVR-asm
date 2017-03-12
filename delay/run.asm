@@ -14,22 +14,28 @@
 
 ; registers are used to quickly create bitmasks
 ; which will correctly configure the ports and
+.DEF input_config_bitmask_register = R17
 .DEF port_config_bitmask_register = R16
 .DEF delay_reg1 = R20
 .DEF delay_reg2 = R21
 .DEF delay_reg3 = R22
 
 main: 
-	; Use PortB pin 4 as output (which should have the 13 ID on the arduino)
+	; Use PortB pin 5 and pin 3 as output (which should have the 13 and 11 ID on the arduino)
 	; pulls up all resistors and sets the output to high
-	;sbi DDRB, 4
-	;sbi PORTB, 4; Sets pin 4 high
-	ldi port_config_bitmask_register, (1<<DDB5)
-	out DDRB, port_config_bitmask_register
-	ldi R18, (1<<DDB5)
-	out PORTB, R18
+	LDI port_config_bitmask_register, (1<<DDB5) | (1<<DDB3)
+	OUT DDRB, port_config_bitmask_register
+	CBI DDRB, 4 ; set pin 4 to 0 = input
+	CBI PORTB, 5
+	CBI PORTB, 3
 
 program_loop:
+	CBI PORTB, 3
+	SBIS PINB, 4 ; If input to pin 4 is 1, run loop, else, go to beginning
+	RJMP program_loop	
+
+	SBI PORTB, 3
+	
 	SBI PORTB, 5
 	CALL delay_start
 	CBI PORTB, 5
