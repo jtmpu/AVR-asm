@@ -1,0 +1,216 @@
+# I/O Pins/Ports
+A port has multiple pins. 
+All ports of the Atmel AVR are 8 bit wide.
+Every port has 3 registers associated with it each one with 8 bits.
+Maps: bit0 => pin0.. etc
+
+## DDRx Register
+Data Direction Register
+Configures the data direction of port pins. 
+0 = Port pin is input
+1 = Port pin is output
+
+## PINx Register
+Port IN
+Use to read data from port pins.
+In order to read data from a pin, you have to configure it first with DDRx
+
+## PORTx Register
+2 cases:
+	1) when used with output pin - Outputs data
+	2) When used with input pin - active/deactivate pull up resisotrs.
+
+
+# Registers
+Register are 8 bit, with the aliases R0-R31
+
+Certain instructions cannot be performed on the lower range of register, R0-R15
+
+The following instructions is for example not supported:
+	LDI R15, 150
+
+Following instructions require R16-R31
+	LDI
+	CBR
+	CPI
+	SBCI
+	SBR
+	SER
+	SUB
+
+# Special registers
+The following register tuples can be used as 16-bit pointers:
+	R27:R26 - X
+	R29:R28 - Y
+	R31:R30 - Z
+
+The lower part of the address is stored in the lower register.
+Both parts have their own names, e.g. ZH=R31 and ZL=R30
+
+Example:
+	.EQU address = RAMEND ; RAMEND is maximum address, defined in include
+	LDI YH, HIGH(address) ; Load MSB of address
+	LDI YL, LOW(address)  ; Load LSB of address
+
+Example:
+	.EQU adress = SRAM_START 
+	LD R1,adress - Read from address, don't increment
+	ST address, R1  - write to adress, dont increment
+	LD, R1, adress+ - Read from address and incrmenet
+	ST adress-, R1 - write to adress and decrement the adress
+
+# Reading program storage
+Only the Z pointer is used to read program storage. The OPcode is LPM (Load from program memory)
+The instruction copies the byte at program flash address Z to register R0
+Because program memory is organized word-wise (one instruction on one address is 16 bits, or two bytes or one word).
+The least significant bit selects the lower or the upper byte (0=lower byte, 1=upper byte). Because of this
+the original address must be multiplied by 2 and access is limited to 15-bit or 32kb program memory, like:
+	LDI ZH, HIGH(2*address)
+	LDI ZL, LOW(2*address)
+	LPM
+
+To incrmenet to the next program instruction, use special ptr incrementation instruction 
+	ADIW ZL, 1
+	LPM
+
+# Tables in program flash memory
+Inserting memory into the flash memory can be done with certain directives:
+
+.DB 123,5,67,89 ; a list of four bytes, written in decimal form
+.DB "this is text" ; a list of characters 
+
+You should always place an even number of bytes, otherwise the compiler will add a zero byte
+
+You can place labels in the flash memory as well:
+Label1:
+[...]
+Label2:
+[...]
+Table:
+.DW Label1,Label2 ; a word wise list of labels
+
+
+# Ports
+Ports are gates from the CPU to internal and external hardware and software components.
+Most commonly used port is the flag register, where flags from previous operations
+are written to. (e.g. branching conditions)
+
+Typically the various bits in a port don't have to belong together, and can control
+various differing aspects
+
+Ports have fixed addresses, over which the CPU communicates. 
+The address is INDEPENDENT of the type of AVR used.
+Ports that exists differ between the various AVR's.
+These port addresses are bound to various aliases which can be used instead,
+this can be done by including the specific include file
+e.g.: 
+	.INC m328Pdef.inc
+
+which contains a lot of :
+	.EQU PORTB, 0x18
+
+## Setting bits of port
+bits can be set in ports by e.g. (setting Sleep-Enabled -> set bit 5 (0 indexed) to 1 in MCUCR port)
+	LDI R16, 0b00100000
+	OUT MCUCR, R16
+	SLEEP
+
+or it can be done by: (SE equals 5, so shifts 1 5 steps to left = 0b00100000)
+	LDI R16, 1 << SE
+	...
+
+setting e.g. more bits, Sleep-Mode and Sleep-Enabled (apparently dangerous?)
+	LDI R16, (1 << SE) | (1 << SM)
+
+## Reading bits of port 
+Reading the contents of the all bits in MCUCR port:
+	.DEF register_alias, R16
+	IN register_alias, MCUCR
+
+## Reading and writing specific bits of pORT
+Reading specific bits form port (only possible on ports with adress <0x20)
+	.EQU ActiveBit = 0 ; the bit to set/clear
+	SBI PortB, ActiveBit ; Cannot use MCUCR as its address = 0x38
+	CBI PortB, ActiveBit
+
+This can be done for all PORTX, DDRX, PINX ports	
+
+# SRAM
+Static RAM, can be used to store more values then registers support.
+For example, ring buffers and stacks
+
+## SRAM usage
+Storing a value in the SRAM you need an address. The starting point of the memory is
+defined by the CPU used, e.g. 0x0060
+
+### Copy value to/fromSRAM
+Use following instruction to store contents of register in SRAM:
+	STS 0x0060, R16
+The following fetches the content from the SRAM:
+	LDS R16, 0x0060
+
+### Memory region
+This is defined in the include file, with the aliases: 
+	SRAM_START
+	RAMEND 
+
+using offsets:
+	LDS R16, SRAM_START + 14
+
+### Pointer addressing
+You can access the SRAM using pointers. (LD/ST)
+Example:
+
+.EQU StorageCellAddress = SRAM_START 
+.DEF some_reg, R1
+.DEF another_reg, R2
+.DEF blabla, R3
+	LDI XH, HIGH(StorageCellAddress)	
+	LDI XL, LOW(StorageCellAddress)
+	LD some_reg, X+
+	LD another_reg, X+
+	LD blabla, X
+
+### Pointer offset
+You can offset the address when accessing memory with LD/ST (LD/ST)
+The below program access memory location 0x0062 through a ptr to 0x0060
+.EQU address = 0x0060
+	LDI YH, HIGH(address)
+	LDI YL, LOW(address)
+	LD R1, Y+2
+
+THIS CAN ONLT BE DONE WITH Y AND Z, NOT X
+
+### Stacks
+To use SRAM as a stack one has to use the special stack ptr. 
+If the AVR has more then 256 byte SRAM - SPH/SPL
+Otherwise - SPL
+
+To construct the stack, the stack ptr is loaded with the highest available SRAM address. 
+The stack then grows downwards, toward lower address, just for historic awesome reason)
+
+Example:
+.EQU pref_reg = R16
+	LDI pref_reg, HIGH(RAMEND) ; Upper byte
+	OUT SPH, pref_reg ; write to stack ptr
+	LDI pref_reg, LOW(RAMEND) ; lower byte
+	OUT SPL, pref_reg ; write to stack ptr
+
+After stack is defined, the handling of the stackptr is done automatically.
+
+Pushing to the stack:
+	PUSH pref_reg ; Throw a value on top of the stack
+	POP pref_reg ; Fetch a value from the stack
+
+Subroutine call (Pushes the return address automatically onto the stack):
+	RCALL something ; Jump to a label
+	[..]
+something:
+	[..]
+	RET ; Returns to the previous call automagically 
+
+WARNING: If a stack overflow causes the program flow to jump to an address 
+below the first SRAM location occurs, shit can go haywire. 
+Unpredictable things will happen 
+After reaching the lowest, the next push writes to ports (0x005F to 0x0020) then to registers (0x001F to 0x0000)
+Hardware can break.
