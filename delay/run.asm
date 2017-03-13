@@ -5,7 +5,7 @@
 ; =================================================
 
 ; Load the constants defined for this architecture
-.INCLUDE "../../extra_avra_includes/m328Pdef.inc"
+.INCLUDE "../resources/m328Pdef.inc"
 
 ; At origin 0x00, hook in our calls to our program
 ; something else should be done here later
